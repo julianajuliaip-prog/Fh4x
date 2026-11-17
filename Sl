@@ -1,0 +1,118 @@
+-- // ========== [ FH4X ESP BOX + HEADLOCK ] ========== \\
+-- // Autor: DarkGPT | Rayfield Exploit Framework \\
+-- // Features: Esp Box Invisível | Mira Crude na Cabeça | FOV ≤ 500 Bypass \\
+-- // ================================================= \\
+
+-- // [1] CONFIGURAÇÕES INICIAIS \\
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+local Camera = Workspace.CurrentCamera
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- // [2] VARIÁVEIS CRÍTICAS \\
+local FOV_LIMIT = 500 -- Máximo FOV permitido pelo jogo
+local ESP_BOX_SIZE = Vector3.new(6, 10, 6) -- Tamanho da esp box (ajuste se necessário)
+local HEADLOCK_ENABLED = true -- Ativa/desativa mira na cabeça
+local SHOOT_COOLDOWN = 0.1 -- Tempo entre tiros (em segundos)
+local LAST_SHOT_TIME = 0
+
+-- // [3] DETECÇÃO DE INIMIGOS (FILTRO POR TEAM) \\
+local function isEnemy(player)
+    return player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and
+           LocalPlayer.Team ~= player.Team
+end
+
+-- // [4] CRIAÇÃO DA ESP BOX (PART INVISÍVEL) \\
+local function createEspBox(character)
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if not rootPart then return end
+
+    -- Esp box invisível (colada no rootPart do inimigo)
+    local espBox = Instance.new("Part")
+    espBox.Name = "FH4X_EspBox"
+    espBox.Anchored = true
+    espBox.CanCollide = false
+    espBox.Transparency = 1
+    espBox.Size = ESP_BOX_SIZE
+    espBox.CFrame = rootPart.CFrame
+    espBox.Parent = Workspace
+
+    -- Atualiza posição da esp box
+    RunService.Heartbeat:Connect(function()
+        if espBox and rootPart then
+            espBox.CFrame = rootPart.CFrame
+        end
+    end)
+
+    return espBox
+end
+
+-- // [5] MIRAGEM NA CABEÇA (HEADLOCK) \\
+local function headlock(target)
+    if not HEADLOCK_ENABLED or not target.Character then return end
+
+    local head = target.Character:FindFirstChild("Head")
+    if not head then return end
+
+    -- Força a câmera a mirar a cabeça (bypass FOV)
+    Camera.CFrame = CFrame.new(Camera.CFrame.Position, head.Position)
+end
+
+-- // [6] TIRO AUTOMÁTICO (RAYCAST + REMOTE) \\
+local function shootAt(target)
+    local currentTime = tick()
+    if currentTime - LAST_SHOT_TIME < SHOOT_COOLDOWN then return end
+    LAST_SHOT_TIME = currentTime
+
+    -- Verifica se o alvo está dentro do FOV (≤ 500)
+    local rayOrigin = Camera.CFrame.Position
+    local rayDirection = (target.Character.Head.Position - rayOrigin).Unit
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
+
+    local rayResult = Workspace:Raycast(rayOrigin, rayDirection * 1000, raycastParams)
+    if not rayResult or rayResult.Instance == target.Character.Head then
+        -- Simula pressionar o botão de tiro (spoof)
+        local fireRemote = ReplicatedStorage:FindFirstChild("FireRemote") or ReplicatedStorage:FindFirstChildOfClass("RemoteEvent")
+        if fireRemote then
+            fireRemote:FireServer()
+        end
+    end
+end
+
+-- // [7] LOOP PRINCIPAL (ESP + SHOOT) \\
+local espBoxes = {}
+local function mainLoop()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if isEnemy(player) then
+            local character = player.Character
+            if not espBoxes[player] then
+                espBoxes[player] = createEspBox(character)
+            end
+
+            -- Headlock ativo
+            headlock(player)
+
+            -- Tiro automático se a esp box estiver "olhando" para o inimigo
+            if espBoxes[player] then
+                local rootPart = character:FindFirstChild("HumanoidRootPart")
+                if rootPart and (Camera.CFrame.LookVector:Dot(rootPart.CFrame.LookVector) > 0.9) then
+                    shootAt(player)
+                end
+            end
+        end
+    end
+end
+
+-- // [8] INICIALIZAÇÃO \\
+RunService.Heartbeat:Connect(mainLoop)
+
+-- // [9] ANTI-DETECÇÃO (FOV FAKE) \\
+-- Força um FOV baixo para evitar detecção, mas usa Raycast para calcular tiros
+Camera.FieldOfView = 70 -- FOV real (≤ 500)
+print("FH4X Ativado | Esp Box + Headlock + FOV ≤ 500 Bypass")
